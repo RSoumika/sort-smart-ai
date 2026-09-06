@@ -9,11 +9,8 @@ import { WasteResult } from "@/components/WasteResult";
 import { LocalGuidanceDialog } from "@/components/LocalGuidanceDialog";
 import { LocalRulesNotice } from "@/components/SafetyNotice";
 import { EXAMPLE_ITEMS } from "@/data/wasteKnowledgeBase";
-import {
-  analyzeWasteImage,
-  analyzeWasteItem,
-  type AnalysisResult,
-} from "@/services/wasteAnalysis";
+import { analyzeWasteItem, type AnalysisResult } from "@/services/wasteAnalysis";
+import { identifyWasteFromImage } from "@/services/openaiVision";
 
 const TITLE = "Sort Waste — SortSmart";
 const DESCRIPTION =
@@ -71,15 +68,46 @@ function SortPage() {
       setLoading(false);
     }
   }
+  function fileToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        resolve(String(reader.result));
+      };
+
+      reader.onerror = () => {
+        reject(reader.error ?? new Error("Failed to read image."));
+      };
+
+      reader.readAsDataURL(file);
+    });
+  }
 
   async function runImage() {
     if (!file) return;
+
     setError(null);
     setResult(null);
     setLoading(true);
+
     try {
-      setResult(await analyzeWasteImage(file.name, query));
-    } catch {
+      const imageDataUrl = await fileToDataUrl(file);
+
+      const identifiedItem = await identifyWasteFromImage({
+        data: { imageDataUrl },
+      });
+
+      const analysisInput = identifiedItem === "unknown" && query.trim() ? query : identifiedItem;
+
+      setResult(
+        await analyzeWasteItem(analysisInput, {
+          inputType: "image",
+          delayMs: 0,
+        }),
+      );
+    } catch (error) {
+      console.error("Image analysis failed:", error);
       setError("Something went wrong while analyzing. Please try again.");
     } finally {
       setLoading(false);
@@ -184,9 +212,8 @@ function SortPage() {
                       className="mt-1.5 w-full rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/25"
                     />
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Image recognition is not connected in this prototype — the interface and
-                      service layer are ready for a vision model, so a description is used to
-                      classify for now.
+                      SortSmart uses AI vision to identify the item, then applies its curated
+                      disposal and safety rules to recommend what to do with it.
                     </p>
                   </div>
                   <button
