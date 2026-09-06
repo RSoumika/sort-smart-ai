@@ -1,0 +1,147 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * SortSmart design system — sustainability inspired.
+ * Soft off-white canvas, deep leaf-green primary, category accents.
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 3px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 6px);
+  --radius-2xl: calc(var(--radius) + 12px);
+  --radius-3xl: calc(var(--radius) + 20px);
+  --radius-4xl: calc(var(--radius) + 28px);
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-bio: var(--bio);
+  --color-bio-soft: var(--bio-soft);
+  --color-recycle: var(--recycle);
+  --color-recycle-soft: var(--recycle-soft);
+  --color-hazard: var(--hazard);
+  --color-hazard-soft: var(--hazard-soft);
+  --color-ewaste: var(--ewaste);
+  --color-ewaste-soft: var(--ewaste-soft);
+  --color-unknown: var(--unknown);
+  --color-unknown-soft: var(--unknown-soft);
+  --color-chart-1: var(--bio);
+  --color-chart-2: var(--recycle);
+  --color-chart-3: var(--ewaste);
+  --color-chart-4: var(--hazard);
+  --color-chart-5: var(--unknown);
+  --shadow-soft: 0 1px 2px oklch(0.3 0.05 150 / 0.04), 0 12px 32px -12px oklch(0.3 0.05 150 / 0.14);
+  --shadow-lift: 0 2px 4px oklch(0.3 0.05 150 / 0.05), 0 24px 48px -18px oklch(0.3 0.05 150 / 0.22);
+}
+
+:root {
+  --radius: 1rem;
+  --background: oklch(0.985 0.008 110);
+  --foreground: oklch(0.24 0.03 155);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.24 0.03 155);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.24 0.03 155);
+  --primary: oklch(0.53 0.13 155);
+  --primary-foreground: oklch(0.99 0.01 120);
+  --primary-soft: oklch(0.94 0.04 155);
+  --secondary: oklch(0.95 0.02 130);
+  --secondary-foreground: oklch(0.3 0.05 155);
+  --muted: oklch(0.955 0.012 120);
+  --muted-foreground: oklch(0.52 0.02 150);
+  --accent: oklch(0.93 0.05 150);
+  --accent-foreground: oklch(0.3 0.06 155);
+  --destructive: oklch(0.56 0.19 27);
+  --destructive-foreground: oklch(0.99 0.01 120);
+  --border: oklch(0.91 0.015 130);
+  --input: oklch(0.91 0.015 130);
+  --ring: oklch(0.53 0.13 155);
+
+  --bio: oklch(0.55 0.14 145);
+  --bio-soft: oklch(0.95 0.045 145);
+  --recycle: oklch(0.55 0.12 235);
+  --recycle-soft: oklch(0.95 0.035 235);
+  --hazard: oklch(0.58 0.17 40);
+  --hazard-soft: oklch(0.95 0.05 60);
+  --ewaste: oklch(0.52 0.13 300);
+  --ewaste-soft: oklch(0.95 0.035 300);
+  --unknown: oklch(0.5 0.02 150);
+  --unknown-soft: oklch(0.95 0.01 150);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+}
+
+@utility surface-card {
+  background-color: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-soft);
+}
+
+@utility grain-bg {
+  background-image: radial-gradient(
+      circle at 12% 8%,
+      oklch(0.53 0.13 155 / 0.09),
+      transparent 45%
+    ),
+    radial-gradient(circle at 88% 0%, oklch(0.55 0.12 235 / 0.07), transparent 40%);
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility rise-in {
+  animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
