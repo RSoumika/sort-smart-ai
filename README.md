@@ -1,930 +1,188 @@
-# SortSmart — RAG-enabled prototype
+# SortSmart — AI-Assisted Waste Segregation
 
-Start with [RAG setup and demonstration](RAG-SETUP.md) for installation,
-configuration, the retrieval/generation pipeline, tests, and limitations.
+SortSmart is a text-based prototype that helps people understand how to sort everyday waste. Users describe an item and receive a likely waste category, disposal guidance, safety precautions and supporting knowledge-base passages.
 
-Text and photo results now retrieve local knowledge-base passages and, when an
-API key is configured, generate an explanation with expandable source citations.
-Local fallback is explicitly labelled. No municipal database is connected.
+Developed by **R. Soumika** for the **1M1B AI for Sustainability Virtual Internship**, in collaboration with **IBM SkillsBuild and AICTE**.
 
-The content below is the original project brief, retained for context; its
-future-tense AI descriptions do not describe the current RAG implementation.
+## The Problem
 
----
+People often feel unsure about which bin to use or whether an item requires special handling. Incorrect sorting can contaminate recyclables and mix hazardous materials with ordinary household waste.
 
-# Original project brief
+SortSmart aims to make disposal guidance easier to understand for students, households and campus communities.
 
-Build a polished, modern web application called "SortSmart" — an AI-powered waste segregation assistant designed primarily for students, households, and campus communities.
+## SDG Alignment
 
-CORE IDEA
+- **Primary — SDG 12: Responsible Consumption and Production**  
+  Encourage informed waste sorting and responsible disposal.
+- **Secondary — SDG 11: Sustainable Cities and Communities**  
+  Support awareness of safer community waste-management practices.
 
-SortSmart helps users figure out how to dispose of everyday waste correctly. A user can type the name/description of an item or upload an image. The system identifies the likely waste category and provides:
+These are intended contributions. Environmental impact has not yet been measured.
 
-1. Waste category
+## Features
 
-2. Recommended disposal method/bin
+- Text-based waste-item descriptions.
+- Likely waste classification and disposal guidance.
+- Special-handling precautions for hazardous items.
+- Clarification for uncertain or multiple-item descriptions.
+- Expandable supporting knowledge-base passages.
+- An implemented Retrieval-Augmented Generation (RAG) pipeline.
+- Clearly labelled local guidance when AI generation is unavailable.
 
-3. Whether special handling is required
+**Photo upload is not part of the current interface.**
 
-4. A short explanation of why the recommendation matters
+## How It Works
 
-5. A confidence/uncertainty indication when appropriate
+1. The user describes a waste item.
+2. SortSmart retrieves relevant records using keyword and fuzzy matching.
+3. Local classification and safety rules produce structured guidance.
+4. When API access is available, an AI model receives the description and retrieved passages to generate an explanation.
+5. SortSmart validates returned source IDs and displays the supporting passages.
 
-6. A reminder that disposal rules can vary by location
+The generated explanation supplements the guidance. It does not replace the deterministic category or special-handling fields.
 
-The project aligns primarily with:
+## RAG Status
 
-- SDG 12: Responsible Consumption and Production
+The RAG pipeline is implemented, but **live generation has not been verified and is currently limited by API access/credits**.
 
-- Secondary: SDG 11: Sustainable Cities and Communities
+Without working API access, the application returns local rule-based guidance and labels the AI explanation as unavailable. This fallback is **not a generated RAG response**.
 
-IMPORTANT
+The retrieval source is a curated educational knowledge base—not a verified municipal-policy database. Source-ID validation does not guarantee that a generated explanation is factually correct.
 
-This is an educational/prototype project. Do NOT pretend that the application has access to real-time municipal waste databases unless an actual API/database is implemented. For the prototype, use a well-structured local knowledge base and clearly label location-specific information as general guidance.
+## IBM Bob Contribution
 
-DESIGN DIRECTION
+IBM Bob was used during development to review classification logic, improve handling of reported cases and add regression tests.
 
-Create a premium, modern sustainability-focused interface.
+Examples include:
 
-Visual style:
+- Distinguishing “android tablet” from medicine.
+- Treating “phone case” as an accessory rather than electronic waste.
+- Handling uncertainty for “dirty paper.”
+- Requesting separate descriptions for multiple items.
 
-- Clean and minimal
+IBM Bob supported development; it does not power the running application.
 
-- Friendly but professional
-
-- Nature/sustainability inspired
-
-- Soft off-white/light background
-
-- Green as the primary accent
-
-- Subtle secondary colors for different waste categories
-
-- Rounded cards
-
-- Soft shadows
-
-- Modern typography
-
-- Plenty of whitespace
-
-- Smooth micro-interactions
-
-- Responsive on desktop, tablet, and mobile
-
-Do NOT make it look like a generic ChatGPT clone.
-
-The product should feel like a real sustainability/AI startup prototype.
-
-APP STRUCTURE
-
-Create these main sections/pages:
-
-1. LANDING / HOME
-
-2. SORT WASTE
-
-3. RESULT
-
-4. HOW IT WORKS
-
-5. IMPACT / DASHBOARD
-
-6. ABOUT / RESPONSIBLE AI
-
------------------------------------
-
-1. HOME PAGE
-
------------------------------------
-
-Hero section:
-
-Logo/name:
-
-"SortSmart"
-
-Headline:
-
-"Know where it goes."
-
-Subheadline:
-
-"An AI-powered waste assistant that helps you identify, sort, and dispose of everyday waste responsibly."
-
-Primary CTA:
-
-"Sort an Item"
-
-Secondary CTA:
-
-"How It Works"
-
-Include a visual representation of waste sorting / sustainability, preferably using clean illustrated cards or icons rather than stock-photo-heavy design.
-
-Add a small trust message:
-
-"Designed to make responsible waste segregation simpler."
-
-Below the hero, show four feature cards:
-
-- Identify
-
-  "Understand what type of waste you're dealing with."
-
-- Sort
-
-  "Get a clear recommendation for the appropriate disposal category."
-
-- Learn
-
-  "Understand why correct disposal matters."
-
-- Act Responsibly
-
-  "Get safer guidance for e-waste and hazardous items."
-
-Add a section:
-
-"Why SortSmart?"
-
-Explain the problem:
-
-"People often want to dispose of waste correctly but aren't sure where different items belong. Incorrect segregation can contaminate recyclable or compostable waste and create safety risks for hazardous materials and e-waste."
-
-Use a simple visual flow:
-
-Uncertainty → Incorrect Sorting → Contaminated Waste → Reduced Recycling
-
-Then:
-
-SortSmart helps turn:
-
-Question → Classification → Guidance → Action
-
------------------------------------
-
-2. SORT WASTE PAGE
-
------------------------------------
-
-This is the main interactive experience.
-
-Header:
-
-"What are you throwing away?"
-
-Subtext:
-
-"Tell SortSmart what you have and we'll help you figure out what to do with it."
-
-Provide two input methods:
-
-A. TEXT INPUT
-
-Large input field:
-
-"e.g. used battery, banana peel, plastic bottle..."
-
-Button:
-
-"Analyze Item"
-
-B. IMAGE INPUT
-
-A large drag-and-drop/upload area:
-
-"Upload a photo"
-
-Subtext:
-
-"JPG, PNG or WEBP"
-
-Button:
-
-"Choose Image"
-
-Allow the user to preview the uploaded image before analysis.
-
-Also provide example quick-select items:
-
-- Banana Peel
-
-- Plastic Bottle
-
-- Used Battery
-
-- Old Charger
-
-- Food Container
-
-- Plastic Wrapper
-
-- Cardboard Box
-
-- Broken Electronics
-
-Clicking one should automatically populate/analyze the item.
-
-Include a small note:
-
-"SortSmart provides general guidance. Disposal rules may differ by municipality."
-
------------------------------------
-
-3. AI RESULT
-
------------------------------------
-
-After analysis, display a beautiful result card.
-
-Example:
-
-"Used Battery"
-
-Category:
-
-"HAZARDOUS / SPECIAL WASTE"
-
-Recommended Action:
-
-"Take it to an authorized battery collection or e-waste facility."
-
-Special Handling:
-
-"Do not place used batteries in regular household waste."
-
-Why it matters:
-
-"Batteries can contain materials that require specialized handling and recycling."
-
-Also show:
-
-Confidence:
-
-"High confidence"
-
-Use a visual confidence indicator, but do not pretend it is a scientifically calibrated probability.
-
-For uncertain cases, show:
-
-"Not completely sure"
-
-"Please provide more information about the item or check your local disposal guidelines."
-
-IMPORTANT:
-
-Never confidently provide a dangerous or incorrect disposal instruction when the classification is uncertain.
-
-Add buttons:
-
-- "Sort Another Item"
-
-- "Learn More"
-
-- "Find Local Guidance"
-
-The "Find Local Guidance" button can open a modal asking for:
-
-- Country
-
-- City/municipality
-
-For the prototype, explain that local rules would be connected to a municipal knowledge source in a production version.
-
------------------------------------
-
-4. WASTE CATEGORIES
-
------------------------------------
-
-Use four primary categories:
-
-1. BIODEGRADABLE
-
-Examples:
-
-- Fruit/vegetable peels
-
-- Food scraps
-
-- Garden waste
-
-General recommendation:
-
-Organic/compost collection where available.
-
-2. RECYCLABLE
-
-Examples:
-
-- Clean paper
-
-- Cardboard
-
-- Some plastic bottles
-
-- Metal cans
-
-General recommendation:
-
-Recycling collection, subject to local rules.
-
-3. HAZARDOUS / SPECIAL WASTE
-
-Examples:
-
-- Batteries
-
-- Certain chemicals
-
-- Paint-related waste
-
-General recommendation:
-
-Authorized hazardous/special waste collection.
-
-4. E-WASTE
-
-Examples:
-
-- Chargers
-
-- Cables
-
-- Phones
-
-- Small electronic devices
-
-General recommendation:
-
-Authorized e-waste collection/recycling.
-
-IMPORTANT:
-
-Some objects may not fit perfectly into one category. The system should be able to return:
-
-"Needs more information"
-
-when material, condition, contamination, or local rules affect the recommendation.
-
------------------------------------
-
-5. LOCAL KNOWLEDGE BASE
-
------------------------------------
-
-Implement a simple local data structure containing example disposal guidance.
-
-Create a structured dataset for at least 15–20 common items.
-
-Example fields:
-
-{
-
-  name,
-
-  aliases,
-
-  category,
-
-  recommendedAction,
-
-  specialHandling,
-
-  explanation,
-
-  confidence,
-
-  keywords
-
-}
-
-Include examples such as:
-
-- banana peel
-
-- apple core
-
-- vegetable scraps
-
-- cardboard box
-
-- newspaper
-
-- plastic bottle
-
-- aluminum can
-
-- glass bottle
-
-- plastic wrapper
-
-- food container
-
-- used battery
-
-- phone charger
-
-- USB cable
-
-- old mobile phone
-
-- broken headphones
-
-- electronic toy
-
-- paint container
-
-Use keyword matching/fuzzy matching for the prototype if no real AI API is connected.
-
-ARCHITECTURE:
-
-User input
-
-→ normalize input
-
-→ identify likely item
-
-→ classify category
-
-→ retrieve guidance
-
-→ generate structured response
-
-Keep the classification logic modular so that a real AI/vision API can be connected later.
-
------------------------------------
-
-6. AI INTEGRATION DESIGN
-
------------------------------------
-
-Structure the application so the analysis service can eventually be replaced with an actual AI API.
-
-Create a service/function such as:
-
-analyzeWasteItem(input)
-
-It should return:
-
-{
-
-  itemName,
-
-  category,
-
-  recommendedAction,
-
-  specialHandling,
-
-  explanation,
-
-  confidence,
-
-  requiresVerification
-
-}
-
-For the current prototype, use mock/local logic if no API key is available.
-
-DO NOT expose API keys in frontend code.
-
-If an AI API is integrated, use a secure server-side function/backend endpoint.
-
-For image analysis, design the UI and service interface so a computer vision model can be connected later.
-
------------------------------------
-
-7. EXAMPLE INTERACTIONS
-
------------------------------------
-
-Make these work in the prototype:
-
-Input:
-
-"banana peel"
-
-Output:
-
-Category: Biodegradable
-
-Action: Organic/compost collection where available
-
-Special handling: None
-
-Explanation: Food and plant scraps can generally be composted or processed as organic waste.
-
-Input:
-
-"plastic bottle"
-
-Output:
-
-Category: Recyclable
-
-Action: Recycling collection, subject to local rules
-
-Special handling: Empty/rinse where appropriate
-
-Explanation: Many plastic beverage bottles are recyclable, although acceptance varies by local program.
-
-Input:
-
-"used battery"
-
-Output:
-
-Category: Hazardous / Special Waste
-
-Action: Battery collection point or authorized facility
-
-Special handling: Do not place in regular household waste.
-
-Explanation: Batteries require specialized handling and recycling.
-
-Input:
-
-"old phone charger"
-
-Output:
-
-Category: E-waste
-
-Action: Authorized e-waste collection/recycling
-
-Special handling: Do not place in general waste where e-waste collection is available.
-
-Explanation: Chargers contain electronic components and should be processed through appropriate e-waste channels.
-
-Input:
-
-"plastic wrapper"
-
-Output:
-
-Category:
-
-"Recyclability depends on material and local rules"
-
-Do NOT automatically claim that every plastic wrapper is recyclable.
-
------------------------------------
-
-8. IMPACT DASHBOARD
-
------------------------------------
-
-Create a simple prototype dashboard showing the potential impact of SortSmart.
-
-Do not claim these are real measured results.
-
-Clearly label them:
-
-"Prototype / illustrative metrics"
-
-Show cards such as:
-
-Items Sorted
-
-"128"
-
-Correct Guidance Provided
-
-"91%"
-
-E-waste Identified
-
-"24"
-
-Potentially Diverted from General Waste
-
-"73"
-
-These should be mock/demo data and clearly labeled as such.
-
-Add a simple chart showing example categories analyzed:
-
-- Biodegradable
-
-- Recyclable
-
-- E-waste
-
-- Hazardous
-
-Include a section:
-
-"Potential Impact"
-
-Explain:
-
-"By making waste segregation easier to understand, SortSmart aims to reduce incorrect sorting, improve recycling awareness, and encourage safer disposal of e-waste and hazardous materials."
-
------------------------------------
-
-9. HOW IT WORKS
-
------------------------------------
-
-Create a visual four-step process:
-
-01 — Tell Us
-
-"Enter an item name, description, or photo."
-
-02 — Identify
-
-"SortSmart determines the likely material and waste category."
-
-03 — Check Guidance
-
-"The system retrieves relevant disposal guidance from its knowledge base."
-
-04 — Take Action
-
-"You receive a clear disposal recommendation and explanation."
-
-Add a technical architecture diagram:
-
-User Input
-
-↓
-
-AI / Classification Layer
-
-↓
-
-Waste Knowledge Base
-
-↓
-
-Disposal Recommendation
-
-↓
-
-Explanation + Safety Guidance
-
------------------------------------
-
-10. RESPONSIBLE AI PAGE
-
------------------------------------
-
-Create a section explaining the responsible AI principles behind SortSmart.
-
-Principles:
-
-PRIVACY
-
-"Only information needed to identify the waste should be used. Avoid collecting unnecessary personal information."
-
-TRANSPARENCY
-
-"Explain why a particular disposal recommendation was made."
-
-UNCERTAINTY
-
-"If the system cannot confidently identify an item, it should say so instead of guessing."
-
-SAFETY
-
-"Provide additional caution for hazardous waste and e-waste."
-
-LOCAL CONTEXT
-
-"Disposal systems differ between locations. Users should verify local municipal guidance."
-
-Add a highlighted statement:
-
-"SortSmart is an assistance tool, not a substitute for official local waste-management instructions."
-
------------------------------------
-
-11. ABOUT / PROJECT PAGE
-
------------------------------------
-
-Show:
-
-SortSmart
-
-"AI for smarter waste segregation."
-
-Problem:
-
-"People often struggle to determine how everyday waste should be disposed of."
-
-Solution:
-
-"An AI-assisted system that identifies waste categories and provides understandable disposal guidance."
-
-SDG Alignment:
-
-SDG 12
-
-Responsible Consumption and Production
-
-SDG 11
-
-Sustainable Cities and Communities
-
-Target Users:
-
-- Students
-
-- Households
-
-- Campus communities
-
-- Sustainability-conscious users
-
------------------------------------
-
-12. UI/UX REQUIREMENTS
-
------------------------------------
-
-Make the experience extremely simple.
-
-A first-time user should understand what to do within 5 seconds.
-
-Use:
-
-- clear headings
-
-- large input area
-
-- obvious CTA
-
-- category icons
-
-- readable result cards
-
-- accessible contrast
-
-- responsive layout
-
-- keyboard navigation
-
-- meaningful hover/focus states
-
-- loading animation during analysis
-
-- empty states
-
-- error states
-
-Add subtle animations but don't overdo them.
-
-When analyzing:
-
-Show:
-
-"Analyzing your item..."
-
-Then:
-
-"Identifying waste type..."
-
-"Checking disposal guidance..."
-
-Then reveal the result.
-
------------------------------------
-
-13. TECHNICAL REQUIREMENTS
-
------------------------------------
-
-Use:
+## Technology Stack
 
 - React
-
 - TypeScript
-
+- TanStack Start and TanStack Router
+- Vite
 - Tailwind CSS
+- OpenAI Responses API for optional RAG generation
+- Zod for validation
+- Node.js test runner
 
-- modern component architecture
+## Run Locally
 
-- reusable components
+### Prerequisites
 
-- clean folder structure
+- Node.js 22.12+ on the Node 22 release line, or a newer release compatible with Vite 8.
+- npm.
+- Optional: an OpenAI API key with available credits and access to the configured model.
 
-Prefer a simple architecture that is easy for a student to understand and explain.
+### Installation
 
-Suggested components:
-
-Navbar
-
-Hero
-
-WasteInput
-
-ImageUploader
-
-ExampleItems
-
-AnalysisLoader
-
-WasteResult
-
-CategoryBadge
-
-SafetyNotice
-
-ImpactDashboard
-
-HowItWorks
-
-ResponsibleAI
-
-Footer
-
-Create a central waste-analysis service so the UI isn't tightly coupled to the classification logic.
-
------------------------------------
-
-14. IMPORTANT HONESTY REQUIREMENT
-
------------------------------------
-
-This is a prototype.
-
-Do NOT fabricate:
-
-- real AI accuracy
-
-- real municipal partnerships
-
-- real recycling rates
-
-- real environmental impact
-
-- real collection-center availability
-
-- real user statistics
-
-If demo data is shown, label it:
-
-"Demo data"
-
-or
-
-"Illustrative prototype metric"
-
-If no AI API is connected, make that architecture clear in the code and use local/mock classification.
-
------------------------------------
-
-15. FINAL EXPERIENCE
-
------------------------------------
-
-The finished application should feel like a real student-built AI sustainability product that could be presented in a 1M1B project showcase.
-
-The user journey should be:
-
-Landing Page
-
-→ Sort an Item
-
-→ Enter/upload waste
-
-→ Analyze
-
-→ Get category
-
-→ Get disposal recommendation
-
-→ Understand why
-
-→ Learn about responsible disposal
-
-Make the application polished enough for a project demonstration.
-
-Prioritize:
-
-1. Functionality
-
-2. Clarity
-
-3. Responsible AI
-
-4. Sustainability storytelling
-
-5. Visual polish
-
-6. Easy explanation during an interview
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+```bash
+git clone https://github.com/RSoumika/sort-smart-ai.git
+cd sort-smart-ai
+npm ci
 npm run dev
 ```
+
+Open the local address printed in the terminal.
+
+Local rule-based text guidance works without an API key.
+
+### Enable Optional AI Generation
+
+Copy `.env.example` to `.env`.
+
+On Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Configure:
+
+```dotenv
+OPENAI_API_KEY=your_api_key_here
+OPENAI_RAG_MODEL=gpt-4.1-mini
+```
+
+The configured model must be available to your API account and support the Responses API and Structured Outputs.
+
+Restart the development server after editing `.env`.
+
+**Never commit `.env` or API keys.** API usage may incur charges. Leave the key unset if you only want local guidance.
+
+## Tests and Build
+
+```bash
+npm run test:rag
+npm run typecheck
+npm run build
+```
+
+At the latest verification:
+
+- **22 automated tests passed.**
+- **TypeScript validation passed.**
+- The application’s production build was previously verified.
+
+Tests cover specific classification cases, retrieval, source validation, fallback behaviour and safety preservation. Some tests use simulated AI responses.
+
+Passing tests does **not** establish 100% real-world classification accuracy or successful live AI generation.
+
+## Responsible AI Considerations
+
+### Fairness
+
+English-language matching and limited knowledge-base coverage may reduce usefulness for some users and locations.
+
+### Transparency
+
+The interface displays supporting passages, uncertainty and whether generated explanations are unavailable.
+
+### Ethics and Safety
+
+SortSmart preserves hazardous-waste precautions and recommends local verification. It is an educational assistance tool, not a substitute for official disposal instructions.
+
+### Privacy
+
+Avoid entering personal or sensitive information. When AI generation is configured, descriptions and retrieved guidance are sent to an external AI provider. Credentials should remain server-side and outside version control.
+
+## Current Limitations
+
+- No live municipal-policy integration.
+- English-focused keyword and fuzzy matching.
+- Some ambiguous, contaminated or negated descriptions need further refinement.
+- Multiple-item detection can also flag a single-item description containing conjunctions.
+- Generated RAG explanations depend on working API access.
+- No measured environmental impact or field evaluation.
+- Additional access controls, rate limits and operational safeguards are needed before public production use.
+
+Any impact-dashboard figures are illustrative demo values, not measured outcomes.
+
+## Future Improvements
+
+- Add reviewed municipal disposal policies with source links and location details.
+- Expand classification tests and collect user feedback.
+- Enable and evaluate live RAG generation.
+- Improve language support and handling of ambiguous descriptions.
+- Strengthen deployment safeguards.
+
+## Project Status
+
+**Educational internship prototype.**
+
+The project demonstrates waste guidance, knowledge retrieval, safety checks and an implemented RAG workflow. Its current limitations are documented above.
+
+## References
+
+- Project Creation & Guideline — AI for Sustainability Virtual Internship, July–September 2026
+- [United Nations — SDG 12](https://sdgs.un.org/goals/goal12)
+- [United Nations — SDG 11](https://sdgs.un.org/goals/goal11)
+- [IBM Bob Documentation](https://bob.ibm.com/docs/ide)
+- [OpenAI Structured Outputs Documentation](https://developers.openai.com/api/docs/guides/structured-outputs)
