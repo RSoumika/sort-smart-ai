@@ -8,13 +8,16 @@
  */
 import {
   CATEGORIES,
-  WASTE_ITEMS,
   type Confidence,
   type WasteCategory,
   type WasteItem,
 } from "@/data/wasteKnowledgeBase";
 
+import { retrieveWasteItems } from "@/services/wasteRetrieval";
+import type { RagDetails } from "./wasteRag";
+
 export interface AnalysisResult {
+  rag?: RagDetails;
   itemName: string;
   material: string;
   category: WasteCategory;
@@ -28,6 +31,8 @@ export interface AnalysisResult {
   matchedItemId: string | null;
   source: "local-knowledge-base" | "local-material-inference";
   inputType: "text" | "image";
+  safetyDecision?: "safe" | "special-handling" | "verify";
+  safetyReason?: string;
 }
 
 interface InferenceRule {
@@ -51,6 +56,40 @@ export function normalizeInput(raw: string): string {
     .trim();
 }
 
+/**
+ * Return true when the input appears to contain more than one distinct item
+ * (e.g. "plastic bottle and banana peel"). Used to prompt for separate queries
+ * rather than guessing which item to classify.
+ */
+export function looksLikeMultipleItems(input: string): boolean {
+  // Matches "X and Y", "X, Y", "X & Y" where at least two non-trivial tokens
+  // are separated by a list connector. We only trigger when both sides of the
+  // connector contain at least one word of 3+ characters so that phrases like
+  // "used and broken battery" or "oil and grease" don't false-fire.
+  //
+  // NOTE: normalizeInput strips commas and "&" to spaces, so we split on the
+  // raw input for those punctuation connectors and on the normalized form for
+  // the word "and".
+  const raw = input.toLowerCase();
+  const normalized = normalizeInput(input);
+
+  // Check raw input for comma or "&" connectors
+  if (/[,&]/.test(raw)) {
+    const parts = raw.split(/[,&]/).map((p) => p.trim());
+    const substantive = parts.filter((p) => /[a-z]{3,}/.test(p));
+    if (substantive.length >= 2) return true;
+  }
+
+  // Check normalized input for the word "and"
+  if (/\band\b/.test(normalized)) {
+    const parts = normalized.split(/\band\b/).map((p) => p.trim());
+    const substantive = parts.filter((p) => /[a-z]{3,}/.test(p));
+    if (substantive.length >= 2) return true;
+  }
+
+  return false;
+}
+
 const RULES: InferenceRule[] = [
   {
     name: "Battery",
@@ -58,19 +97,50 @@ const RULES: InferenceRule[] = [
     material: "Battery containing metals and chemical electrolyte",
     category: "hazardous",
     action: "Take it to an authorized battery collection point or e-waste facility.",
-    handling: "Do not place batteries in household bins. Tape exposed terminals where local guidance recommends it, and isolate damaged or swollen batteries.",
-    explanation: "Batteries can leak hazardous substances and lithium cells can start fires during collection or processing.",
+    handling:
+      "Do not place batteries in household bins. Tape exposed terminals where local guidance recommends it, and isolate damaged or swollen batteries.",
+    explanation:
+      "Batteries can leak hazardous substances and lithium cells can start fires during collection or processing.",
     confidence: "high",
     verify: true,
   },
   {
+    name: "Non-electronic device accessory",
+    // A device accessory (case, screen protector, stand, sleeve, strap) is a
+    // manufactured article — usually plastic, silicone, or fabric — that does
+    // not itself contain electronics. It must be matched before the broad
+    // Electronic-device rule so that "phone case" is not classified as e-waste.
+    patterns: [
+      /\b(phone|tablet|laptop|computer|device|camera)\s+(case|cover|sleeve|skin|protector|stand|holder|mount|strap|bag|pouch)\b/,
+      /\b(screen|display)\s+(protector|cover|film|guard)\b/,
+    ],
+    material: "Plastic, silicone, or fabric accessory",
+    category: "general",
+    action:
+      "Identify the material (plastic, silicone, or fabric) and follow local general-waste or recycling guidance for that material.",
+    handling: null,
+    explanation:
+      "Device accessories do not contain electronics and should not be put in e-waste collections. Recyclability depends on the specific material.",
+    confidence: "medium",
+    verify: true,
+  },
+  {
     name: "Medicine",
-    patterns: [/\b(medicine|medication|tablet|pill|pharmaceutical|expired drug|syringe|medical waste)\b/],
+    patterns: [
+      // "tablet" is intentionally excluded here to avoid matching device names
+      // such as "android tablet". Pharmaceutical tablet contexts are still caught
+      // via "pill", "medication", "medicine", and the knowledge-base entry whose
+      // keywords include "tablet".
+      /\b(medicine|medication|pill|pharmaceutical|expired drug|syringe|medical waste)\b/,
+    ],
     material: "Pharmaceutical or medical product",
     category: "hazardous",
-    action: "Use an authorized medicine take-back, pharmacy collection, or household hazardous-waste program where available.",
-    handling: "Do not flush medicines or place sharps loose in household waste. Follow official local guidance.",
-    explanation: "Medicines can affect people, wildlife, and water systems when discarded through ordinary waste or drains.",
+    action:
+      "Use an authorized medicine take-back, pharmacy collection, or household hazardous-waste program where available.",
+    handling:
+      "Do not flush medicines or place sharps loose in household waste. Follow official local guidance.",
+    explanation:
+      "Medicines can affect people, wildlife, and water systems when discarded through ordinary waste or drains.",
     confidence: "high",
     verify: true,
   },
@@ -80,8 +150,10 @@ const RULES: InferenceRule[] = [
     material: "Chemical product or contaminated container",
     category: "hazardous",
     action: "Take it to an authorized household hazardous-waste collection point.",
-    handling: "Keep it sealed in its original container when possible. Do not pour it into drains or mix it with other chemicals.",
-    explanation: "Chemical residues and contaminated packaging require controlled handling even when the container appears empty.",
+    handling:
+      "Keep it sealed in its original container when possible. Do not pour it into drains or mix it with other chemicals.",
+    explanation:
+      "Chemical residues and contaminated packaging require controlled handling even when the container appears empty.",
     confidence: "high",
     verify: true,
   },
@@ -91,8 +163,10 @@ const RULES: InferenceRule[] = [
     material: "Glass lamp with electronic components and possible mercury",
     category: "hazardous",
     action: "Take it to an authorized lamp, bulb, or hazardous-waste collection point.",
-    handling: "Handle without breaking it; fluorescent lamps may contain a small amount of mercury. Check official local guidance if broken.",
-    explanation: "Fluorescent lighting needs controlled recovery to keep mercury and electronic components out of ordinary waste.",
+    handling:
+      "Handle without breaking it; fluorescent lamps may contain a small amount of mercury. Check official local guidance if broken.",
+    explanation:
+      "Fluorescent lighting needs controlled recovery to keep mercury and electronic components out of ordinary waste.",
     confidence: "high",
     verify: true,
   },
@@ -101,9 +175,12 @@ const RULES: InferenceRule[] = [
     patterns: [/\b(light bulb|bulb|lamp)\b/],
     material: "Glass and metal; the internal technology is not specified",
     category: "hazardous",
-    action: "Keep it separate and check a local lamp or bulb collection route; the correct method depends on whether it is LED, incandescent, halogen, or fluorescent.",
-    handling: "Handle carefully and do not place a broken bulb loose in a bin. Fluorescent/CFL bulbs require authorized collection because they may contain mercury.",
-    explanation: "Different bulb technologies contain different components, so identifying the bulb type is important; a dedicated collection route is the safest general recommendation.",
+    action:
+      "Keep it separate and check a local lamp or bulb collection route; the correct method depends on whether it is LED, incandescent, halogen, or fluorescent.",
+    handling:
+      "Handle carefully and do not place a broken bulb loose in a bin. Fluorescent/CFL bulbs require authorized collection because they may contain mercury.",
+    explanation:
+      "Different bulb technologies contain different components, so identifying the bulb type is important; a dedicated collection route is the safest general recommendation.",
     confidence: "medium",
     verify: true,
   },
@@ -112,9 +189,11 @@ const RULES: InferenceRule[] = [
     patterns: [/\b(cooking|vegetable|frying) oil\b/, /\bused oil\b/],
     material: "Liquid cooking oil",
     category: "hazardous",
-    action: "Cool it, collect it in a sealed container, and use a local cooking-oil collection method where available.",
+    action:
+      "Cool it, collect it in a sealed container, and use a local cooking-oil collection method where available.",
     handling: "Do not pour oil down sinks, toilets, or storm drains.",
-    explanation: "Cooking oil can block pipes and pollute waterways; some collection programs recover it for reuse or fuel.",
+    explanation:
+      "Cooking oil can block pipes and pollute waterways; some collection programs recover it for reuse or fuel.",
     confidence: "high",
     verify: true,
   },
@@ -123,20 +202,27 @@ const RULES: InferenceRule[] = [
     patterns: [/\b(ink|toner) cartridge\b/],
     material: "Plastic cartridge with residual ink or toner",
     category: "hazardous",
-    action: "Use a manufacturer take-back, office-supply drop-off, or authorized special-waste collection route.",
+    action:
+      "Use a manufacturer take-back, office-supply drop-off, or authorized special-waste collection route.",
     handling: "Keep the cartridge intact and avoid releasing residual ink or toner.",
-    explanation: "Cartridges combine recoverable plastic and electronics with residues that ordinary recycling is not designed to process.",
+    explanation:
+      "Cartridges combine recoverable plastic and electronics with residues that ordinary recycling is not designed to process.",
     confidence: "high",
     verify: true,
   },
   {
     name: "Electronic device",
-    patterns: [/\b(laptop|computer|keyboard|mouse|phone|mobile|tablet|charger|charging cable|usb cable|cable|earphones?|earbuds?|headphones?|electronic|appliance|circuit board|power brick|adapter)\b/],
+    patterns: [
+      /\b(laptop|computer|keyboard|mouse|phone|mobile|tablet|android tablet|ipad|charger|charging cable|usb cable|cable|earphones?|earbuds?|headphones?|electronic|appliance|circuit board|power brick|adapter)\b/,
+    ],
     material: "Electronic components, metals, and plastic",
     category: "ewaste",
-    action: "Use an authorized e-waste collection point, retailer take-back, or certified electronics recycler.",
-    handling: "Do not place it in ordinary household waste. Remove personal data from data-bearing devices and flag any damaged battery at drop-off.",
-    explanation: "Electronics contain recoverable materials and components that need dedicated processing; many also contain batteries or sensitive data.",
+    action:
+      "Use an authorized e-waste collection point, retailer take-back, or certified electronics recycler.",
+    handling:
+      "Do not place it in ordinary household waste. Remove personal data from data-bearing devices and flag any damaged battery at drop-off.",
+    explanation:
+      "Electronics contain recoverable materials and components that need dedicated processing; many also contain batteries or sensitive data.",
     confidence: "high",
     verify: true,
   },
@@ -145,9 +231,12 @@ const RULES: InferenceRule[] = [
     patterns: [/\b(broken|shattered|sharp) glass\b/],
     material: "Broken glass",
     category: "glass",
-    action: "Keep it out of ordinary container-glass recycling unless your local program explicitly accepts broken glass; follow local disposal guidance.",
-    handling: "Wrap or place sharp pieces in a rigid, clearly marked container so they cannot injure handlers.",
-    explanation: "Broken glass is an injury risk and may not be accepted with bottles and jars, even though both are made of glass.",
+    action:
+      "Keep it out of ordinary container-glass recycling unless your local program explicitly accepts broken glass; follow local disposal guidance.",
+    handling:
+      "Wrap or place sharp pieces in a rigid, clearly marked container so they cannot injure handlers.",
+    explanation:
+      "Broken glass is an injury risk and may not be accepted with bottles and jars, even though both are made of glass.",
     confidence: "high",
     verify: true,
   },
@@ -156,9 +245,11 @@ const RULES: InferenceRule[] = [
     patterns: [/\b(ceramic|porcelain|crockery|mug|plate|dish)\b/],
     material: "Ceramic or porcelain",
     category: "general",
-    action: "Reuse or donate it if intact; otherwise follow local general-waste or specialized construction-material guidance.",
+    action:
+      "Reuse or donate it if intact; otherwise follow local general-waste or specialized construction-material guidance.",
     handling: "Wrap broken edges securely to protect waste handlers.",
-    explanation: "Ceramic melts at a different temperature from container glass and is generally not accepted in ordinary glass recycling.",
+    explanation:
+      "Ceramic melts at a different temperature from container glass and is generally not accepted in ordinary glass recycling.",
     confidence: "high",
     verify: true,
   },
@@ -168,8 +259,10 @@ const RULES: InferenceRule[] = [
     material: "Soiled paper, fibre, or mixed absorbent material",
     category: "general",
     action: "Bag it securely and place it in general waste according to local guidance.",
-    handling: "Do not put used sanitary items or tissues in recycling or flush them down the toilet.",
-    explanation: "Soiling and mixed absorbent materials make these items unsuitable for standard paper recycling.",
+    handling:
+      "Do not put used sanitary items or tissues in recycling or flush them down the toilet.",
+    explanation:
+      "Soiling and mixed absorbent materials make these items unsuitable for standard paper recycling.",
     confidence: "high",
     verify: true,
   },
@@ -178,20 +271,27 @@ const RULES: InferenceRule[] = [
     patterns: [/\b(toothbrush|tooth brush|razor)\b/],
     material: "Mixed plastics and nylon",
     category: "general",
-    action: "Dispose of it according to local general-waste guidance, or use a specialist take-back program if one is available.",
+    action:
+      "Dispose of it according to local general-waste guidance, or use a specialist take-back program if one is available.",
     handling: null,
-    explanation: "Most conventional toothbrushes combine several materials that standard household recycling systems cannot separate.",
+    explanation:
+      "Most conventional toothbrushes combine several materials that standard household recycling systems cannot separate.",
     confidence: "high",
     verify: true,
   },
   {
     name: "Textile",
-    patterns: [/\b(shoe|shoes|clothes|clothing|shirt|trousers|jeans|dress|textile|fabric|cotton|wool|polyester|garment)\b/],
+    patterns: [
+      /\b(shoe|shoes|clothes|clothing|shirt|trousers|jeans|dress|textile|fabric|cotton|wool|polyester|garment)\b/,
+    ],
     material: "Textile or mixed footwear materials",
     category: "textile",
-    action: "Reuse, repair, or donate if suitable; otherwise use a textile collection point where available.",
-    handling: "Keep reusable textiles clean and dry. Do not place them in household recycling unless specifically accepted.",
-    explanation: "Textiles and footwear are usually handled through reuse or dedicated collection rather than standard household recycling.",
+    action:
+      "Reuse, repair, or donate if suitable; otherwise use a textile collection point where available.",
+    handling:
+      "Keep reusable textiles clean and dry. Do not place them in household recycling unless specifically accepted.",
+    explanation:
+      "Textiles and footwear are usually handled through reuse or dedicated collection rather than standard household recycling.",
     confidence: "medium",
     verify: true,
   },
@@ -200,9 +300,11 @@ const RULES: InferenceRule[] = [
     patterns: [/\b(styrofoam|polystyrene|thermocol|foam cup|foam packaging|packing peanut)\b/],
     material: "Expanded polystyrene foam",
     category: "general",
-    action: "Check for a specialist foam drop-off; if none is available, follow local general-waste guidance.",
+    action:
+      "Check for a specialist foam drop-off; if none is available, follow local general-waste guidance.",
     handling: "Keep loose foam contained so it does not become litter.",
-    explanation: "Expanded foam is rarely accepted in household recycling because it is bulky, lightweight, and difficult to process economically.",
+    explanation:
+      "Expanded foam is rarely accepted in household recycling because it is bulky, lightweight, and difficult to process economically.",
     confidence: "high",
     verify: true,
   },
@@ -211,9 +313,11 @@ const RULES: InferenceRule[] = [
     patterns: [/\b(milk|juice|beverage) carton\b/, /\btetra ?pak\b/],
     material: "Layered paperboard, plastic, and sometimes aluminium",
     category: "recyclable",
-    action: "Empty, rinse where appropriate, and recycle only if cartons are accepted by your local program.",
+    action:
+      "Empty, rinse where appropriate, and recycle only if cartons are accepted by your local program.",
     handling: "Flatten only if requested locally; caps may be handled differently.",
-    explanation: "Drink cartons are recyclable in facilities designed to separate their bonded material layers, but acceptance varies.",
+    explanation:
+      "Drink cartons are recyclable in facilities designed to separate their bonded material layers, but acceptance varies.",
     confidence: "medium",
     verify: true,
   },
@@ -222,9 +326,11 @@ const RULES: InferenceRule[] = [
     patterns: [/\btea ?bag\b/],
     material: "Tea leaves in a paper, plant-fibre, or plastic-mesh bag",
     category: "unknown",
-    action: "Compost it only when the packaging confirms the bag is plastic-free; otherwise follow local general-waste guidance.",
+    action:
+      "Compost it only when the packaging confirms the bag is plastic-free; otherwise follow local general-waste guidance.",
     handling: "Remove staples, string, tags, and non-compostable packaging where applicable.",
-    explanation: "The tea leaves are organic, but some bags use plastic sealing fibres or mesh that do not break down in compost.",
+    explanation:
+      "The tea leaves are organic, but some bags use plastic sealing fibres or mesh that do not break down in compost.",
     confidence: "medium",
     verify: true,
   },
@@ -233,9 +339,12 @@ const RULES: InferenceRule[] = [
     patterns: [/\b(food|takeaway|takeout|lunch) (container|box)\b/],
     material: "Unspecified food-contact packaging",
     category: "unknown",
-    action: "Identify the material, empty and clean the container, then recycle it only if that material and format are accepted locally; otherwise use general waste.",
-    handling: "Food residue can contaminate recycling, and foam or coated fibre may require a different route.",
-    explanation: "Food containers can be plastic, aluminium, coated paper, foam, or mixed material, so the object name alone does not determine recyclability.",
+    action:
+      "Identify the material, empty and clean the container, then recycle it only if that material and format are accepted locally; otherwise use general waste.",
+    handling:
+      "Food residue can contaminate recycling, and foam or coated fibre may require a different route.",
+    explanation:
+      "Food containers can be plastic, aluminium, coated paper, foam, or mixed material, so the object name alone does not determine recyclability.",
     confidence: "medium",
     verify: true,
   },
@@ -244,9 +353,12 @@ const RULES: InferenceRule[] = [
     patterns: [/\b(plastic|snack|chip|chips) (wrapper|packet|film)\b/, /\bsoft plastic\b/],
     material: "Flexible plastic or multi-layer film",
     category: "unknown",
-    action: "Use a soft-plastic drop-off if accepted locally; otherwise follow local general-waste guidance.",
-    handling: "Keep it out of ordinary household recycling unless your program explicitly accepts flexible film.",
-    explanation: "Many wrappers combine plastic and metallised layers that standard recycling facilities cannot separate.",
+    action:
+      "Use a soft-plastic drop-off if accepted locally; otherwise follow local general-waste guidance.",
+    handling:
+      "Keep it out of ordinary household recycling unless your program explicitly accepts flexible film.",
+    explanation:
+      "Many wrappers combine plastic and metallised layers that standard recycling facilities cannot separate.",
     confidence: "medium",
     verify: true,
   },
@@ -255,42 +367,76 @@ const RULES: InferenceRule[] = [
     patterns: [/\b(aluminium|aluminum|tin) foil\b/],
     material: "Aluminium foil",
     category: "metal",
-    action: "Clean off food residue, combine small pieces into a larger ball, and recycle where aluminium foil is accepted.",
+    action:
+      "Clean off food residue, combine small pieces into a larger ball, and recycle where aluminium foil is accepted.",
     handling: "Heavily soiled or laminated foil may need to go in general waste.",
-    explanation: "Clean aluminium is recyclable, but tiny or contaminated pieces may not be captured by sorting equipment.",
+    explanation:
+      "Clean aluminium is recyclable, but tiny or contaminated pieces may not be captured by sorting equipment.",
     confidence: "medium",
     verify: true,
   },
   {
     name: "Food and plant matter",
-    patterns: [/\b(coffee grounds?|egg ?shells?|fruit|vegetable|food scraps?|peel|core|garden waste|leaves|flowers)\b/],
+    patterns: [
+      /\b(coffee grounds?|egg ?shells?|fruit|vegetable|food scraps?|peel|core|garden waste|leaves|flowers)\b/,
+    ],
     material: "Food or plant matter",
     category: "biodegradable",
     action: "Use an organics or compost collection where available.",
     handling: "Keep non-compostable packaging and stickers out of the organics stream.",
-    explanation: "Food and plant matter can break down biologically and may be recovered as compost rather than sent to landfill.",
+    explanation:
+      "Food and plant matter can break down biologically and may be recovered as compost rather than sent to landfill.",
     confidence: "high",
     verify: true,
   },
   {
+    name: "Contaminated paper",
+    // Contamination signals (dirty, soiled, wet, greasy, stained) override the
+    // standard recyclable-paper route. Condition determines acceptance, so we
+    // ask rather than issue an over-confident recycling recommendation.
+    patterns: [
+      /\b(dirty|soiled|greasy|wet|stained|used)\s+(paper|newspaper|cardboard|magazine|notebook)\b/,
+      /\b(paper|newspaper|cardboard)\b.{0,25}\b(dirty|soiled|greasy|wet|stained|food)\b/,
+    ],
+    material: "Paper or cardboard with possible contamination",
+    category: "unknown",
+    action:
+      "If only lightly soiled and structurally intact, check whether your local programme accepts it; heavily soiled or wet paper usually goes to general waste.",
+    handling: "Food-contaminated or very wet paper is typically rejected by paper recyclers.",
+    explanation:
+      "Paper is widely recyclable when clean and dry, but contamination from food, grease, or moisture can make fibres unusable and contaminate other recyclables.",
+    confidence: "low",
+    verify: true,
+  },
+  {
     name: "Paper product",
-    patterns: [/\b(notebook|exercise book|newspaper|magazine|office paper|cardboard|paper bag|paper)\b/],
+    patterns: [
+      /\b(notebook|exercise book|newspaper|magazine|office paper|cardboard|paper bag|paper)\b/,
+    ],
     material: "Paper or cardboard",
     category: "recyclable",
     action: "Place clean, dry paper in paper recycling where accepted locally.",
-    handling: "Remove non-paper covers, plastic sleeves, or large metal bindings when practical. Soiled or coated paper may not be accepted.",
-    explanation: "Clean paper fibre is widely recyclable, while contamination and bonded coatings can prevent recovery.",
+    handling:
+      "Remove non-paper covers, plastic sleeves, or large metal bindings when practical. Soiled or coated paper may not be accepted.",
+    explanation:
+      "Clean paper fibre is widely recyclable, while contamination and bonded coatings can prevent recovery.",
     confidence: "medium",
     verify: true,
   },
   {
     name: "Plastic container",
-    patterns: [/\b(shampoo|conditioner|detergent|soap) bottle\b/, /\bplastic (bottle|jar|tub|container)\b/],
+    patterns: [
+      /\b(shampoo|conditioner|detergent|soap) bottle\b/,
+      /\bplastic (bottle|jar|tub|container)\b/,
+    ],
     material: "Rigid plastic container",
     category: "recyclable",
-    action: "Empty and rinse it where appropriate, then recycle if that plastic type is accepted locally.",
-    handling: "Check the resin label and local rules; pumps and mixed-material closures may need to be removed.",
-    explanation: "Many rigid plastic containers can be recycled, but acceptance depends on the plastic type and local sorting facilities.",
+    action:
+      "Empty and rinse it where appropriate, then recycle if that plastic type is accepted locally.",
+    handling:
+      "Check the resin label and local rules; pumps and mixed-material closures may need to be removed.",
+    explanation:
+      "Many rigid plastic containers can be recycled, but acceptance depends on the plastic type and local sorting facilities.",
     confidence: "medium",
     verify: true,
   },
@@ -299,9 +445,12 @@ const RULES: InferenceRule[] = [
     patterns: [/\b(wood|wooden|timber)\b/],
     material: "Wood, possibly treated or coated",
     category: "general",
-    action: "Reuse, repair, donate, or use a bulky-waste or timber recovery service where available.",
-    handling: "Do not compost painted, pressure-treated, or chemically coated wood. Large furniture may require a booked collection.",
-    explanation: "Wood can sometimes be recovered, but coatings, treatments, size, and local facilities determine the correct route.",
+    action:
+      "Reuse, repair, donate, or use a bulky-waste or timber recovery service where available.",
+    handling:
+      "Do not compost painted, pressure-treated, or chemically coated wood. Large furniture may require a booked collection.",
+    explanation:
+      "Wood can sometimes be recovered, but coatings, treatments, size, and local facilities determine the correct route.",
     confidence: "medium",
     verify: true,
   },
@@ -310,9 +459,12 @@ const RULES: InferenceRule[] = [
     patterns: [/\bglass (bottle|jar|container)\b/],
     material: "Container glass",
     category: "glass",
-    action: "Empty and rinse it, then use a glass recycling or bottle-return route where available.",
-    handling: "Remove closures if local guidance requests it. Do not include ceramics, mirrors, or heat-resistant glass.",
-    explanation: "Bottles and jars can often be recycled repeatedly, but other glass products have different compositions.",
+    action:
+      "Empty and rinse it, then use a glass recycling or bottle-return route where available.",
+    handling:
+      "Remove closures if local guidance requests it. Do not include ceramics, mirrors, or heat-resistant glass.",
+    explanation:
+      "Bottles and jars can often be recycled repeatedly, but other glass products have different compositions.",
     confidence: "medium",
     verify: true,
   },
@@ -322,8 +474,10 @@ const RULES: InferenceRule[] = [
     material: "Metal",
     category: "metal",
     action: "Use metal recycling where this item and size are accepted locally.",
-    handling: "Empty and clean packaging; wrap sharp edges and use a suitable drop-off for large objects.",
-    explanation: "Metals are valuable recyclable materials, but collection rules vary by object type, size, and contamination.",
+    handling:
+      "Empty and clean packaging; wrap sharp edges and use a suitable drop-off for large objects.",
+    explanation:
+      "Metals are valuable recyclable materials, but collection rules vary by object type, size, and contamination.",
     confidence: "medium",
     verify: true,
   },
@@ -332,18 +486,27 @@ const RULES: InferenceRule[] = [
     patterns: [/\bplastic|acrylic|rubber|silicone\b/],
     material: "Plastic, rubber, or mixed polymer",
     category: "general",
-    action: "Check the material label and local recycling rules; if it is not an accepted rigid package, use general waste.",
+    action:
+      "Check the material label and local recycling rules; if it is not an accepted rigid package, use general waste.",
     handling: null,
-    explanation: "Being made of plastic does not automatically make an object recyclable; shape, resin type, and mixed components matter.",
+    explanation:
+      "Being made of plastic does not automatically make an object recyclable; shape, resin type, and mixed components matter.",
     confidence: "medium",
     verify: true,
   },
 ];
 
 const AMBIGUOUS: { pattern: RegExp; question: string }[] = [
-  { pattern: /^(container|packaging|box|bottle|cup|bag)$/, question: "What kind of material is it — plastic, glass, metal, cardboard, ceramic, or something else?" },
+  {
+    pattern: /^(container|packaging|box|bottle|cup|bag)$/,
+    question:
+      "What kind of material is it — plastic, glass, metal, cardboard, ceramic, or something else?",
+  },
   { pattern: /^(oil)$/, question: "Is this cooking oil, motor oil, or another kind of oil?" },
 ];
+
+const MULTI_ITEM_QUESTION =
+  "It looks like you've listed more than one item. For an accurate recommendation please describe each item separately — for example, enter 'plastic bottle' and then 'banana peel' as two separate queries.";
 
 function similarity(a: string, b: string): number {
   if (!a || !b) return 0;
@@ -393,7 +556,11 @@ function displayName(rawInput: string, fallback: string): string {
   return cleaned.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function resultFromRule(rule: InferenceRule, rawInput: string, inputType: "text" | "image"): AnalysisResult {
+function resultFromRule(
+  rule: InferenceRule,
+  rawInput: string,
+  inputType: "text" | "image",
+): AnalysisResult {
   return {
     itemName: displayName(rawInput, rule.name),
     material: rule.material,
@@ -411,18 +578,27 @@ function resultFromRule(rule: InferenceRule, rawInput: string, inputType: "text"
   };
 }
 
-function unresolved(rawInput: string, inputType: "text" | "image", question?: string): AnalysisResult {
+function unresolved(
+  rawInput: string,
+  inputType: "text" | "image",
+  question?: string,
+): AnalysisResult {
   return {
     itemName: displayName(rawInput, "Unidentified item"),
     material: "Not yet identified",
     category: "unknown",
     categoryLabel: CATEGORIES.unknown.label,
-    recommendedAction: "Keep the item separate until its material or previous use is clear; then check the appropriate local disposal guidance.",
-    specialHandling: "If it may contain a battery, chemicals, medicine, electronics, or sharp parts, treat it as special waste until confirmed.",
-    explanation: "A safe recommendation depends on what the item is made of, what it contained, and whether it is broken or contaminated.",
+    recommendedAction:
+      "Keep the item separate until its material or previous use is clear; then check the appropriate local disposal guidance.",
+    specialHandling:
+      "If it may contain a battery, chemicals, medicine, electronics, or sharp parts, treat it as special waste until confirmed.",
+    explanation:
+      "A safe recommendation depends on what the item is made of, what it contained, and whether it is broken or contaminated.",
     confidence: "low",
     requiresVerification: true,
-    clarificationQuestion: question ?? "What material is the item made of, what was it used for, and is it broken, empty, or contaminated?",
+    clarificationQuestion:
+      question ??
+      "What material is the item made of, what was it used for, and is it broken, empty, or contaminated?",
     matchedItemId: null,
     source: "local-material-inference",
     inputType,
@@ -435,11 +611,14 @@ function resultFromKnowledge(
   rule: InferenceRule | null,
   inputType: "text" | "image",
 ): AnalysisResult {
-  const confidence: Confidence = score >= 0.86
-    ? (item.category === "unknown" ? "medium" : item.confidence)
-    : score >= 0.7 && item.confidence === "high"
-      ? "medium"
-      : "low";
+  const confidence: Confidence =
+    score >= 0.86
+      ? item.category === "unknown"
+        ? "medium"
+        : item.confidence
+      : score >= 0.7 && item.confidence === "high"
+        ? "medium"
+        : "low";
   return {
     itemName: item.name,
     material: rule?.material ?? `Material associated with ${item.name.toLowerCase()}`,
@@ -449,10 +628,15 @@ function resultFromKnowledge(
     specialHandling: item.specialHandling,
     explanation: item.explanation,
     confidence,
-    requiresVerification: confidence !== "high" || item.category === "unknown" || item.category === "hazardous" || item.category === "ewaste",
-    clarificationQuestion: item.category === "unknown" && confidence === "low"
-      ? "What material is it made from, and is it clean, empty, or contaminated?"
-      : null,
+    requiresVerification:
+      confidence !== "high" ||
+      item.category === "unknown" ||
+      item.category === "hazardous" ||
+      item.category === "ewaste",
+    clarificationQuestion:
+      item.category === "unknown" && confidence === "low"
+        ? "What material is it made from, and is it clean, empty, or contaminated?"
+        : null,
     matchedItemId: item.id,
     source: "local-knowledge-base",
     inputType,
@@ -463,15 +647,19 @@ export function classify(rawInput: string, inputType: "text" | "image" = "text")
   const input = normalizeInput(rawInput);
   if (!input) return unresolved(rawInput, inputType);
 
+  // Multiple items in one query cannot be reliably classified — ask the user
+  // to submit them separately so each receives accurate, focused guidance.
+  if (looksLikeMultipleItems(rawInput)) {
+    return unresolved(rawInput, inputType, MULTI_ITEM_QUESTION);
+  }
+
   const ambiguous = AMBIGUOUS.find(({ pattern }) => pattern.test(input));
   if (ambiguous) return unresolved(rawInput, inputType, ambiguous.question);
 
   const rule = findRule(input);
-  let best: { item: WasteItem; score: number } | null = null;
-  for (const item of WASTE_ITEMS) {
-    const score = scoreItem(input, item);
-    if (!best || score > best.score) best = { item, score };
-  }
+
+  const retrieved = retrieveWasteItems(input, 3);
+  const best = retrieved[0] ?? null;
 
   // Strong curated matches retain their reliable item-specific guidance. Safety
   // rules win if a broad database alias would otherwise hide a hazardous trait.
@@ -479,7 +667,8 @@ export function classify(rawInput: string, inputType: "text" | "image" = "text")
     return resultFromKnowledge(best.item, best.score, rule, inputType);
   }
   if (rule) return resultFromRule(rule, rawInput, inputType);
-  if (best && best.score >= 0.68) return resultFromKnowledge(best.item, best.score, null, inputType);
+  if (best && best.score >= 0.68)
+    return resultFromKnowledge(best.item, best.score, null, inputType);
   return unresolved(rawInput, inputType);
 }
 
@@ -501,14 +690,29 @@ export async function analyzeWasteImage(fileName: string, hint?: string): Promis
   return {
     ...fromName,
     itemName: "Uploaded photo",
-    recommendedAction: "Add a short description of the photographed item so SortSmart can reason from its object type and material.",
-    explanation: "Image recognition is not connected in this prototype, so the local fallback needs a text description rather than guessing from the photo.",
-    clarificationQuestion: "What does the photo show, what is it made of, and is it broken, empty, or contaminated?",
+    recommendedAction:
+      "Add a short description of the photographed item so SortSmart can reason from its object type and material.",
+    explanation:
+      "Image recognition is not connected in this prototype, so the local fallback needs a text description rather than guessing from the photo.",
+    clarificationQuestion:
+      "What does the photo show, what is it made of, and is it broken, empty, or contaminated?",
   };
 }
 
 export const CONFIDENCE_COPY: Record<Confidence, { label: string; note: string; pct: number }> = {
-  high: { label: "High confidence", note: "The item and its disposal characteristics are clear.", pct: 90 },
-  medium: { label: "Moderate confidence", note: "The likely route depends on material, condition, or local acceptance.", pct: 60 },
-  low: { label: "More detail needed", note: "A material or use detail is needed for a safe recommendation.", pct: 30 },
+  high: {
+    label: "High confidence",
+    note: "The item and its disposal characteristics are clear.",
+    pct: 90,
+  },
+  medium: {
+    label: "Moderate confidence",
+    note: "The likely route depends on material, condition, or local acceptance.",
+    pct: 60,
+  },
+  low: {
+    label: "More detail needed",
+    note: "A material or use detail is needed for a safe recommendation.",
+    pct: 30,
+  },
 };

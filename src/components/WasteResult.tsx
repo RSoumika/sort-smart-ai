@@ -63,6 +63,33 @@ export function WasteResult({
             </section>
           )}
 
+          {result.rag && (
+            <section className="space-y-3 rounded-xl border border-border p-4">
+              <h3 className="font-semibold">Evidence and explanation</h3>
+              <p className="text-sm leading-relaxed" role="status">
+                {result.rag.status === "generated"
+                  ? result.rag.summary
+                  : result.rag.status === "unavailable"
+                    ? "AI explanation is unavailable. The guidance shown comes from local rules."
+                    : "There is not enough matching evidence for an AI explanation. Add a more specific item description and verify local rules."}
+              </p>
+              {result.rag.status === "generated" && (
+                <p className="text-xs text-muted-foreground">
+                  AI-generated from the sources below. Check the original passages before acting.
+                </p>
+              )}
+              {result.rag.sources.map((source) => (
+                <details key={source.id} className="text-sm">
+                  <summary className="cursor-pointer font-medium">{source.title}</summary>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    SortSmart local knowledge base · {source.id} · General educational guidance, not
+                    municipal policy.
+                  </p>
+                  <p className="mt-2 leading-relaxed">{source.passage}</p>
+                </details>
+              ))}
+            </section>
+          )}
           <section>
             <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <Lightbulb className="size-3.5" aria-hidden /> Why it matters
@@ -90,6 +117,27 @@ export function WasteResult({
               Indicative only — not a calibrated probability.
             </p>
           </div>
+          {result.safetyDecision && (
+            <div className="rounded-xl border border-border bg-background p-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Safety decision
+              </h3>
+
+              <p className="mt-1.5 text-sm font-semibold">
+                {result.safetyDecision === "safe"
+                  ? "Safe to proceed"
+                  : result.safetyDecision === "special-handling"
+                    ? "Special handling required"
+                    : "Verification recommended"}
+              </p>
+
+              {result.safetyReason && (
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {result.safetyReason}
+                </p>
+              )}
+            </div>
+          )}
 
           {result.requiresVerification && (
             <div className="flex items-start gap-2 rounded-xl bg-background p-3 text-xs text-muted-foreground">
@@ -99,7 +147,11 @@ export function WasteResult({
           )}
 
           <p className="text-[11px] text-muted-foreground">
-            Source: {result.source === "local-knowledge-base" ? "local knowledge base" : "local material reasoning"} ({result.inputType} input). No municipal database is connected in this prototype.
+            Source:{" "}
+            {result.source === "local-knowledge-base"
+              ? "local knowledge base"
+              : "local material reasoning"}{" "}
+            ({result.inputType} input). No municipal database is connected in this prototype.
           </p>
         </aside>
       </div>

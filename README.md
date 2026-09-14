@@ -1,4 +1,18 @@
-# Sort Smart
+# SortSmart — RAG-enabled prototype
+
+Start with [RAG setup and demonstration](RAG-SETUP.md) for installation,
+configuration, the retrieval/generation pipeline, tests, and limitations.
+
+Text and photo results now retrieve local knowledge-base passages and, when an
+API key is configured, generate an explanation with expandable source citations.
+Local fallback is explicitly labelled. No municipal database is connected.
+
+The content below is the original project brief, retained for context; its
+future-tense AI descriptions do not describe the current RAG implementation.
+
+---
+
+# Original project brief
 
 Build a polished, modern web application called "SortSmart" — an AI-powered waste segregation assistant designed primarily for students, households, and campus communities.
 

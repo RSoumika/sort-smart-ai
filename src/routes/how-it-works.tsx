@@ -24,8 +24,12 @@ export const Route = createFileRoute("/how-it-works")({
 });
 
 const STEPS = [
-  { n: "01", title: "Tell Us", copy: "Enter an item name, description, or photo." },
-  { n: "02", title: "Identify", copy: "SortSmart determines the likely material and waste category." },
+  { n: "01", title: "Tell Us", copy: "Enter an item name and describe its material and condition." },
+  {
+    n: "02",
+    title: "Identify",
+    copy: "SortSmart determines the likely material and waste category.",
+  },
   {
     n: "03",
     title: "Check Guidance",
@@ -42,7 +46,7 @@ const PIPELINE = [
   "User Input",
   "AI / Classification Layer",
   "Waste Knowledge Base",
-  "Disposal Recommendation",
+  "Retrieved Passages → AI Explanation (RAG)",
   "Explanation + Safety Guidance",
 ];
 
@@ -58,8 +62,8 @@ function HowItWorks() {
           <h1 className="text-3xl font-semibold sm:text-4xl">How SortSmart works</h1>
           <p className="mt-3 text-base leading-relaxed text-muted-foreground">
             Four simple steps, one transparent pipeline. In this prototype the classification layer
-            runs locally with normalisation and keyword/fuzzy matching — no external AI model is
-            connected.
+            uses local keyword/fuzzy retrieval. When configured, OpenAI generates an explanation
+            from the retrieved passages, with visible sources and local safety guidance.
           </p>
         </header>
 
@@ -91,10 +95,11 @@ function HowItWorks() {
               ))}
             </ol>
             <p className="mt-6 text-xs text-muted-foreground">
-              The classification layer sits behind a single service function
-              (<code className="rounded bg-muted px-1 py-0.5">analyzeWasteItem</code>), so a real
-              AI or vision API can replace the local logic without changing the UI. Any API key
-              would live server-side, never in the browser.
+              The classification layer sits behind a single service function (
+              <code className="rounded bg-muted px-1 py-0.5">analyzeWasteItem</code>), so a real
+              server-side RAG service retrieves guidance before generating an explanation. API keys
+              stay on the server. Without AI access, clearly labelled local guidance remains
+              available.
             </p>
           </div>
 
@@ -111,9 +116,7 @@ function HowItWorks() {
                     <CategoryIconTile category={id} />
                     <div>
                       <h3 className="font-display text-base font-semibold">{c.label}</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {c.examples.join(" · ")}
-                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">{c.examples.join(" · ")}</p>
                       <p className="mt-1 text-sm">{c.generalRecommendation}</p>
                     </div>
                   </div>
