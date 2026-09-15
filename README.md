@@ -4,6 +4,12 @@ SortSmart is a text-based prototype that helps people understand how to sort eve
 
 Developed by **R. Soumika** for the **1M1B AI for Sustainability Virtual Internship**, in collaboration with **IBM SkillsBuild and AICTE**.
 
+## Live Demo
+
+[Try SortSmart](https://sort-smart-ai.onrender.com)
+
+The free hosting service may take about a minute to wake up after inactivity.
+
 ## The Problem
 
 People often feel unsure about which bin to use or whether an item requires special handling. Incorrect sorting can contaminate recyclables and mix hazardous materials with ordinary household waste.
